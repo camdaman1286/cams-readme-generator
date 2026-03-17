@@ -20,3 +20,4 @@ venv/
 
 # Sensitive var files
 *.tfvars
+*.tfstate.backup
