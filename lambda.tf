@@ -34,6 +34,7 @@ resource "aws_lambda_function" "orchestrator_lambda" {
   handler          = "lambda_function.handler"
   runtime          = "python3.11"
   timeout          = 180
+  memory_size      = 256
   source_code_hash = data.archive_file.orchestrator_zip.output_base64sha256
 
   environment {
@@ -49,6 +50,8 @@ resource "aws_lambda_function" "orchestrator_lambda" {
       FINAL_COMPILER_AGENT_ID           = module.final_compiler_agent.agent_id
       FINAL_COMPILER_AGENT_ALIAS_ID     = "TSTALIASID"
       OUTPUT_BUCKET                     = module.s3_bucket.bucket_id
+      LOG_LEVEL                         = "INFO"
+      FORCE_REGENERATE                  = "false"
     }
   }
 }
