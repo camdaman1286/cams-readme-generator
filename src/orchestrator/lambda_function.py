@@ -57,6 +57,47 @@ def readme_exists(bucket, key):
         return False
 
 
+def scan_is_empty(file_list_response):
+    """Returns True if the repo scanner response indicates no files were found."""
+    if not file_list_response:
+        return True
+    lowered = file_list_response.lower()
+    if '"files": []' in lowered or '"files":[]' in lowered:
+        return True
+    if file_list_response.count('\n') < 2 and not any(
+        ext in file_list_response for ext in ['.py', '.js', '.ts', '.go', '.rb', '.java', '.md']
+    ):
+        return True
+    return False
+
+
+def write_not_found_readme(repo_name, repo_url, output_key):
+    """Writes a friendly not-found README to S3 when a repo can't be scanned."""
+    content = f"""# {repo_name}
+
+Hmm, we couldn't find this repository. 🔍
+
+We looked for `{repo_url}` but came up empty. Here are a few things to check:
+
+- Is the repository public? Private repos can't be scanned.
+- Does the URL look right? Double-check for any typos.
+- Is the repository empty? There may be nothing to scan yet.
+
+Give it another shot with a valid public GitHub repository and we'll get your README generated in no time.
+"""
+    try:
+        s3_client.put_object(
+            Bucket=OUTPUT_BUCKET,
+            Key=output_key,
+            Body=content,
+            ContentType='text/markdown'
+        )
+        logger.info("Not-found README uploaded", extra={"output_key": output_key})
+    except Exception as e:
+        logger.error("Failed to upload not-found README", extra={"error": str(e)})
+        raise e
+
+
 def handler(event, context):
     """Main Lambda handler — orchestrates all agents in sequence."""
     logger.info("Orchestrator started", extra={"event": json.dumps(event)})
@@ -65,8 +106,6 @@ def handler(event, context):
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
 
-    # Decode filename back to a URL
-    # e.g. inputs/https---github.com-TruLie13-municipal-ai -> https://github.com/TruLie13/municipal-ai
     filename = key.replace('inputs/', '')
     repo_url = filename.replace('---', '://', 1)
     parts = repo_url.split('://', 1)
@@ -93,12 +132,26 @@ def handler(event, context):
             'body': json.dumps(f"README already exists at {output_key}. Set FORCE_REGENERATE=true to override.")
         }
 
-    # 3. Run agents in sequence
+    # 3. Scan the repo first
     logger.info("Starting agent pipeline")
 
     file_list_json = invoke_agent_helper(
         REPO_SCANNER_AGENT_ID, REPO_SCANNER_AGENT_ALIAS_ID, session_id, repo_url
     )
+
+    # 4. Guard - stop pipeline if repo scan returned nothing
+    if scan_is_empty(file_list_json):
+        logger.warning("Repo scan returned no files", extra={
+            "repo_url": repo_url,
+            "scanner_response": file_list_json
+        })
+        write_not_found_readme(sanitized_repo_name, repo_url, output_key)
+        return {
+            'statusCode': 200,
+            'body': json.dumps(f"Repo not found or empty. Not-found README written to {output_key}.")
+        }
+
+    # 5. Run remaining agents in sequence
     project_summary = invoke_agent_helper(
         PROJECT_SUMMARIZER_AGENT_ID, PROJECT_SUMMARIZER_AGENT_ALIAS_ID, session_id, file_list_json
     )
@@ -109,7 +162,7 @@ def handler(event, context):
         USAGE_EXAMPLES_AGENT_ID, USAGE_EXAMPLES_AGENT_ALIAS_ID, session_id, file_list_json
     )
 
-    # 4. Bundle all outputs and send to the Final Compiler
+    # 6. Bundle all outputs and send to the Final Compiler
     compiler_input = json.dumps({
         "repository_name": sanitized_repo_name,
         "project_summary": project_summary,
@@ -121,7 +174,7 @@ def handler(event, context):
         FINAL_COMPILER_AGENT_ID, FINAL_COMPILER_AGENT_ALIAS_ID, session_id, compiler_input
     )
 
-    # 5. Save the final README.md to S3
+    # 7. Save the final README.md to S3
     try:
         s3_client.put_object(
             Bucket=OUTPUT_BUCKET,
