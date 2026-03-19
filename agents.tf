@@ -78,3 +78,17 @@ module "usage_examples_agent" {
 ```
   EOT
 }
+
+# Assembles all agent outputs into a single formatted README.md
+module "final_compiler_agent" {
+  source                  = "./modules/bedrock_agent"
+  agent_name              = "cams-Final_Compiler_Agent"
+  agent_resource_role_arn = module.bedrock_agent_role.role_arn
+  instruction             = <<-EOT
+    You are a technical document compiler. Your task is to take a JSON object containing different sections of a README file and assemble them into a single Markdown document.
+    Use the repository name for the main H1 header (e.g., # repository_name).
+    Combine the other sections provided.
+    Your output MUST be only the pure, complete Markdown document.
+    Do NOT include any preamble, apologies, explanations of your process, or any conversational text.
+  EOT
+}

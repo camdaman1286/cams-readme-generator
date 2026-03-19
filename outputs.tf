@@ -24,3 +24,8 @@ output "usage_examples_agent_id" {
   description = "The ID of the Usage Examples Agent."
   value       = module.usage_examples_agent.agent_id
 }
+
+output "final_compiler_agent_id" {
+  description = "The ID of the Final Compiler Agent."
+  value       = module.final_compiler_agent.agent_id
+}
