@@ -64,3 +64,35 @@ resource "aws_iam_role_policy_attachment" "orchestrator_permissions_attach" {
   role       = module.orchestrator_execution_role.role_name
   policy_arn = aws_iam_policy.orchestrator_permissions.arn
 }
+
+# Trust policy - only allows YOUR specific repo on the main branch to assume this role
+data "aws_iam_policy_document" "github_actions_trust_policy" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::388691194728:oidc-provider/token.actions.githubusercontent.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:camdaman1286/cams-readme-generator:ref:refs/heads/main"]
+    }
+  }
+}
+
+# Dedicated role for GitHub Actions - separate from all other roles
+resource "aws_iam_role" "github_actions_role" {
+  name               = "cams-GitHubActionsRole-ReadmeGenerator"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_trust_policy.json
+}
+
+# NOTE: AdministratorAccess is used here for simplicity in a lab environment.
+# In production, replace with a least-privilege custom policy.
+resource "aws_iam_role_policy_attachment" "github_actions_permissions" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}

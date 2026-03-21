@@ -29,3 +29,12 @@ output "final_compiler_agent_id" {
   description = "The ID of the Final Compiler Agent."
   value       = module.final_compiler_agent.agent_id
 }
+output "terraform_state_bucket_name" {
+  description = "The name of the S3 bucket for Terraform state."
+  value       = aws_s3_bucket.terraform_state.bucket
+}
+
+output "github_actions_role_arn" {
+  description = "The ARN of the IAM role for GitHub Actions."
+  value       = aws_iam_role.github_actions_role.arn
+}

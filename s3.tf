@@ -15,3 +15,25 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
 
   depends_on = [aws_lambda_permission.allow_s3_to_invoke_orchestrator]
 }
+# S3 bucket to store Terraform state remotely - required for CI/CD pipeline
+resource "random_string" "state_bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "cams-tf-readme-generator-state-${random_string.state_bucket_suffix.result}"
+}
+
+# DynamoDB table for Terraform state locking - prevents concurrent apply conflicts
+resource "aws_dynamodb_table" "terraform_locks" {
+  name         = "cams-readme-generator-tf-locks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+}
