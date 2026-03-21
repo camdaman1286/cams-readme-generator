@@ -21,3 +21,7 @@ venv/
 # Sensitive var files
 *.tfvars
 *.tfstate.backup
+
+# Generated README test artifacts
+*-README.md
+generated-README.md
