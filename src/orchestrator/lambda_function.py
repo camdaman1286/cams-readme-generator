@@ -75,7 +75,6 @@ def clean_readme(content):
     """Strips any preamble before the first Markdown H1 header."""
     marker = content.find('# ')
     if marker == -1:
-        # No H1 found - return as-is, something is better than nothing
         logger.warning("No H1 header found in compiler output, returning raw content")
         return content
     cleaned = content[marker:]
@@ -84,11 +83,22 @@ def clean_readme(content):
     return cleaned
 
 
+def get_feedback(bucket, feedback_key):
+    """Retrieves user feedback from S3 if it exists."""
+    try:
+        response = s3_client.get_object(Bucket=bucket, Key=feedback_key)
+        feedback = response['Body'].read().decode('utf-8').strip()
+        logger.info("Feedback found", extra={"feedback": feedback})
+        return feedback
+    except s3_client.exceptions.ClientError:
+        return None
+
+
 def write_not_found_readme(repo_name, repo_url, output_key):
     """Writes a friendly not-found README to S3 when a repo can't be scanned."""
     content = f"""# {repo_name}
 
-Hmm, we couldn't find this repository. 🔍
+Hmm, we couldn't find this repository.
 
 We looked for `{repo_url}` but came up empty. Here are a few things to check:
 
@@ -129,6 +139,7 @@ def handler(event, context):
     session_id = context.aws_request_id
     sanitized_repo_name = repo_url.split('/')[-1].replace('.git', '')
     output_key = f"outputs/{sanitized_repo_name}/README.md"
+    feedback_key = f"inputs/feedback/{sanitized_repo_name}.txt"
 
     logger.info("Parsed request", extra={
         "repo_url": repo_url,
@@ -175,22 +186,33 @@ def handler(event, context):
         USAGE_EXAMPLES_AGENT_ID, USAGE_EXAMPLES_AGENT_ALIAS_ID, session_id, file_list_json
     )
 
-    # 6. Bundle all outputs and send to the Final Compiler
-    compiler_input = json.dumps({
+    # 6. Check for user feedback and include it in the compiler input if present
+    feedback = get_feedback(OUTPUT_BUCKET, feedback_key)
+
+    compiler_input = {
         "repository_name": sanitized_repo_name,
         "project_summary": project_summary,
         "installation_guide": installation_guide,
         "usage_examples": usage_examples
-    })
+    }
 
+    if feedback:
+        compiler_input["user_feedback"] = feedback
+        compiler_input["instruction"] = (
+            "The user has reviewed a previous version of this README and provided feedback. "
+            "Apply their feedback when assembling the final document: " + feedback
+        )
+        logger.info("Feedback injected into compiler input")
+
+    # 7. Send to Final Compiler
     readme_content = invoke_agent_helper(
-        FINAL_COMPILER_AGENT_ID, FINAL_COMPILER_AGENT_ALIAS_ID, session_id, compiler_input
+        FINAL_COMPILER_AGENT_ID, FINAL_COMPILER_AGENT_ALIAS_ID, session_id, json.dumps(compiler_input)
     )
 
-    # 7. Clean the output - strip any preamble before the first H1 header
+    # 8. Clean the output - strip any preamble before the first H1 header
     readme_content = clean_readme(readme_content)
 
-    # 8. Save the final README.md to S3
+    # 9. Save the final README.md to S3
     try:
         s3_client.put_object(
             Bucket=OUTPUT_BUCKET,
@@ -202,6 +224,14 @@ def handler(event, context):
     except Exception as e:
         logger.error("Failed to upload README", extra={"error": str(e)})
         raise e
+
+    # 10. Clean up feedback file after use
+    if feedback:
+        try:
+            s3_client.delete_object(Bucket=OUTPUT_BUCKET, Key=feedback_key)
+            logger.info("Feedback file cleaned up", extra={"feedback_key": feedback_key})
+        except Exception as e:
+            logger.warning("Could not delete feedback file", extra={"error": str(e)})
 
     return {
         'statusCode': 200,
