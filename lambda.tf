@@ -26,32 +26,23 @@ data "archive_file" "orchestrator_zip" {
   output_path = "${path.root}/dist/orchestrator.zip"
 }
 
-# Deploy the orchestrator Lambda - longer timeout to handle all agent calls
+# Deploy the orchestrator Lambda - triggers Step Functions state machine
 resource "aws_lambda_function" "orchestrator_lambda" {
   function_name    = "cams-ReadmeGeneratorOrchestrator"
   role             = module.orchestrator_execution_role.role_arn
   filename         = data.archive_file.orchestrator_zip.output_path
   handler          = "lambda_function.handler"
   runtime          = "python3.11"
-  timeout          = 180
+  timeout          = 30
   memory_size      = 256
   source_code_hash = data.archive_file.orchestrator_zip.output_base64sha256
 
   environment {
     variables = {
-      REPO_SCANNER_AGENT_ID             = module.repo_scanner_agent.agent_id
-      REPO_SCANNER_AGENT_ALIAS_ID       = "TSTALIASID"
-      PROJECT_SUMMARIZER_AGENT_ID       = module.project_summarizer_agent.agent_id
-      PROJECT_SUMMARIZER_AGENT_ALIAS_ID = "TSTALIASID"
-      INSTALLATION_GUIDE_AGENT_ID       = module.installation_guide_agent.agent_id
-      INSTALLATION_GUIDE_AGENT_ALIAS_ID = "TSTALIASID"
-      USAGE_EXAMPLES_AGENT_ID           = module.usage_examples_agent.agent_id
-      USAGE_EXAMPLES_AGENT_ALIAS_ID     = "TSTALIASID"
-      FINAL_COMPILER_AGENT_ID           = module.final_compiler_agent.agent_id
-      FINAL_COMPILER_AGENT_ALIAS_ID     = "TSTALIASID"
-      OUTPUT_BUCKET                     = module.s3_bucket.bucket_id
-      LOG_LEVEL                         = "INFO"
-      FORCE_REGENERATE                  = "false"
+      STATE_MACHINE_ARN = aws_sfn_state_machine.readme_pipeline.arn
+      OUTPUT_BUCKET     = module.s3_bucket.bucket_id
+      LOG_LEVEL         = "INFO"
+      FORCE_REGENERATE  = "false"
     }
   }
 }

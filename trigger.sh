@@ -40,7 +40,7 @@ run_pipeline() {
   echo "Waiting for pipeline to complete..."
 
   # Poll S3 every 5 seconds until README appears (max 3 minutes)
-  MAX_WAIT=36
+  MAX_WAIT=60
   COUNT=0
   while [ $COUNT -lt $MAX_WAIT ]; do
     sleep 5

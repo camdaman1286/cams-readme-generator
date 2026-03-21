@@ -28,14 +28,20 @@ module "orchestrator_execution_role" {
   ]
 }
 
-# Allows the Orchestrator to invoke Bedrock agents and read/write to S3
+# Allows the Orchestrator to start Step Functions and check S3
 resource "aws_iam_policy" "orchestrator_permissions" {
   name        = "cams-ReadmeGeneratorOrchestratorPolicy"
-  description = "Allows the Orchestrator Lambda to invoke Bedrock Agents and use the S3 bucket."
+  description = "Allows the Orchestrator Lambda to start Step Functions and use the S3 bucket."
 
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
+      {
+        Sid    = "StepFunctionsStart"
+        Effect = "Allow"
+        Action = ["states:StartExecution"]
+        Resource = "*"
+      },
       {
         Sid    = "BedrockAgentInvoke"
         Effect = "Allow"
