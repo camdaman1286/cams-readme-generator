@@ -71,6 +71,19 @@ def scan_is_empty(file_list_response):
     return False
 
 
+def clean_readme(content):
+    """Strips any preamble before the first Markdown H1 header."""
+    marker = content.find('# ')
+    if marker == -1:
+        # No H1 found - return as-is, something is better than nothing
+        logger.warning("No H1 header found in compiler output, returning raw content")
+        return content
+    cleaned = content[marker:]
+    if len(cleaned) < len(content):
+        logger.info("Stripped preamble from compiler output")
+    return cleaned
+
+
 def write_not_found_readme(repo_name, repo_url, output_key):
     """Writes a friendly not-found README to S3 when a repo can't be scanned."""
     content = f"""# {repo_name}
@@ -174,7 +187,10 @@ def handler(event, context):
         FINAL_COMPILER_AGENT_ID, FINAL_COMPILER_AGENT_ALIAS_ID, session_id, compiler_input
     )
 
-    # 7. Save the final README.md to S3
+    # 7. Clean the output - strip any preamble before the first H1 header
+    readme_content = clean_readme(readme_content)
+
+    # 8. Save the final README.md to S3
     try:
         s3_client.put_object(
             Bucket=OUTPUT_BUCKET,
